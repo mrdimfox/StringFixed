@@ -179,7 +179,7 @@ public:
 
 
 private:
-    CharType _buffer[CAPACITY];
+    CharType _buffer[CAPACITY + 1];
 	std::size_t _length;
 
 	inline std::size_t _useful_length() const {
