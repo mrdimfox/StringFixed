@@ -55,6 +55,12 @@ public:
     typedef std::reverse_iterator<const_iterator>     const_reverse_iterator;
     typedef size_t                                    size_type;
 
+    enum Status {
+        OK,
+        BAD_ALLOC,
+        EMPTY
+    };
+
     StringFixed() :
         _length(1)
     {
@@ -74,11 +80,22 @@ public:
     }
 
     template<std::size_t str_length>
-	StringFixed(const char (&s)[str_length]) :
-	    _length(str_length)
-	{
+    StringFixed(const char (&s)[str_length]) :
+        _length(str_length)
+    {
         set(s);
-	}
+    }
+
+    template<std::size_t M>
+    StringFixed(StringFixed<M> const& src) {
+        set(src);
+    }
+
+#if __cplusplus > 201103L
+    StringFixed(std::experimental::string_view const& src) {
+        set(src.data(), src.length());
+    }
+#endif
 
     StringFixed(StringFixed const& src) {
         set(src.data(), src.length());
@@ -86,11 +103,24 @@ public:
 
     StringFixed(StringFixed&&) = default;
 
+    template<std::size_t str_length>
+    StringFixed& operator=(const char (&s)[str_length]) {
+        set(s);
+        return *this;
+    }
+
     template<std::size_t M>
     StringFixed& operator=(StringFixed<M> const& src) {
         set(src.data(), src.length());
         return *this;
     }
+
+#if __cplusplus > 201103L
+    StringFixed& operator=(std::experimental::string_view const& src) {
+        set(src.data(), src.length());
+        return *this;
+    }
+#endif
 
     StringFixed& operator=(StringFixed const& src) {
         set(src.data(), src.length());
@@ -101,49 +131,151 @@ public:
     ~StringFixed() = default;
 
     template<typename T>
-    void set(T c) {
+    Status set(T c) {
         static_assert(std::is_fundamental<T>::value, "Primitive type required");
-        set(_to_pointer(&c), 1);
+        return set(_to_pointer(&c), 1);
     }
 
-    void set(const char* s) {
-        set(s, std::strlen(s));
+    Status set_cstring(const char* s) {
+        return set(s, std::strlen(s));
     }
 
-    void set(const char* s, const std::size_t length)
+    template<std::size_t M>
+    Status set(StringFixed<M> const& src) {
+        return set(src.data(), src.length());
+    }
+
+#if __cplusplus > 201103L
+    Status set(std::experimental::string_view const& src) {
+        return set(src.data(), src.length());
+    }
+#endif
+
+    Status set(const char* s, std::size_t length)
     {
-        _length = length + 1;
-        std::memcpy(&_buffer, s, _length);
+        auto status = OK;
+        if (length > CAPACITY) {
+            status = BAD_ALLOC;
+            length = CAPACITY;
+        }
 
+        _length = length + 1;
+        std::memcpy(&_buffer, s, length);
         _buffer[_useful_length()] = '\0';
+
+        return status;
     }
 
     template<std::size_t str_length>
-    void set(const char (&s)[str_length])
+    Status set(const char (&s)[str_length])
     {
         _length = str_length;
-        std::strcpy(_to_pointer(&_buffer), _to_pointer(s));
+
+        auto status = OK;
+        if (_length - 1 > CAPACITY) {
+            status = BAD_ALLOC;
+            _length = CAPACITY;
+        }
+
+        std::memcpy(_to_pointer(&_buffer), _to_cpointer(s), _length);
         _buffer[_useful_length()] = '\0';
+
+        return status;
     }
 
+    template<std::size_t str_length>
+    StringFixed& operator+=(const char (&s)[str_length]) {
+        add(s);
+        return *this;
+    }
 
-	const char& operator[](std::size_t i) {
-		return _buffer[i];
-	}
+    template<std::size_t M>
+    StringFixed& operator+=(StringFixed<M> const& src) {
+        add(src.data(), src.length());
+        return *this;
+    }
 
-	const_pointer data() const {
-	    return _to_pointer(&_buffer);
-	}
+#if __cplusplus > 201103L
+    StringFixed& operator+=(std::experimental::string_view const& src) {
+        add(src.data(), src.length());
+        return *this;
+    }
+#endif
 
-	pointer data() {
+    Status add(const char c)
+    {
+        return add(&c, 1);
+    }
+
+    Status add_cstring(const char* s)
+    {
+        return add(s, std::strlen(s));
+    }
+
+    template<std::size_t str_length>
+    Status add(const char (&s)[str_length])
+    {
+        return add(_to_cpointer(s), str_length - 1);
+    }
+
+    template<std::size_t M>
+    Status add(StringFixed<M> const& src)
+    {
+        return add(src.begin(), src.length());
+    }
+
+#if __cplusplus > 201103L
+    Status add(std::experimental::string_view const& src) {
+        return add(src.data(), src.length());
+    }
+#endif
+
+    Status add(const char* s, std::size_t length)
+    {
+        if (_length + length - 1 > CAPACITY) {
+            return BAD_ALLOC;
+        }
+
+        std::memcpy(end(), s, length);
+        _length += length;
+        _buffer[_useful_length()] = '\0';
+
+        return OK;
+    }
+
+    Status pop_back() {
+        if (_useful_length() > 0) {
+            _length--;
+            _buffer[_useful_length()] = '\0';
+
+            return OK;
+        }
+        else {
+            return EMPTY;
+        }
+    }
+
+    const_reference back() {
+        return *rbegin();
+    }
+
+    const_reference operator[](std::size_t i) {
+        return _buffer[i];
+    }
+
+    const_pointer data() const {
         return _to_pointer(&_buffer);
     }
 
-	std::size_t length() const {
-		return _length - 1;
-	}
+    pointer data() {
+        return _to_pointer(&_buffer);
+    }
 
-	iterator begin() {
+    std::size_t length() const {
+        return _length - 1;
+    }
+
+    iterator begin() {
         return _to_pointer(&_buffer);
     }
 
@@ -151,7 +283,7 @@ public:
         return _to_pointer(&_buffer);
     }
 
-	iterator end() {
+    iterator end() {
         return &_buffer[_useful_length()];
     }
 
@@ -183,7 +315,8 @@ public:
         return _useful_length() == 0;
     }
 
-    int compare(const StringFixed& other) const {
+    template<std::size_t M>
+    int compare(const StringFixed<M>& other) const {
         return _compare(this->begin(), this->end(), other.begin(), other.end());
     }
 
@@ -200,30 +333,39 @@ public:
         return _compare(this->begin(), this->end(), other, other + length);
     }
 
+    void clear() {
+        _length = 1;
+        _buffer[0] = '0';
+    }
 
 private:
     CharType _buffer[CAPACITY + 1];
-	std::size_t _length;
+    std::size_t _length;
 
-	inline std::size_t _useful_length() const {
-	    return _length - 1;
-	}
+    inline std::size_t _useful_length() const {
+        return _length - 1;
+    }
 
-	template<typename T>
-	inline pointer _to_pointer(T ptr) {
-	    return reinterpret_cast<pointer>(ptr);
-	}
+    template<typename T>
+    inline pointer _to_pointer(T ptr) {
+        return reinterpret_cast<pointer>(ptr);
+    }
 
-	template<typename T>
-	inline const_pointer _to_pointer(T ptr) const {
-	    return reinterpret_cast<const_pointer>(ptr);
-	}
+    template<typename T>
+    inline const_pointer _to_pointer(T ptr) const {
+        return reinterpret_cast<const_pointer>(ptr);
+    }
 
-	int _compare(const_pointer begin_iter1, const_pointer end_inter1,
-	             const_pointer begin_iter2, const_pointer end_inter2) const
+    template<typename T>
+    inline const_pointer _to_cpointer(T ptr) const {
+        return reinterpret_cast<const_pointer>(ptr);
+    }
+
+    int _compare(const_pointer begin_iter1, const_pointer end_inter1,
+                 const_pointer begin_iter2, const_pointer end_inter2) const
     {
-	    auto it1 = begin_iter1;
-	    auto it2 = begin_iter2;
+        auto it1 = begin_iter1;
+        auto it2 = begin_iter2;
 
         while ((it1 != end_inter1) && (it2 != end_inter2)) {
             ++it1;
