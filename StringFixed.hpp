@@ -120,6 +120,10 @@ public:
         set(src.data(), src.length());
         return *this;
     }
+
+    operator std::experimental::string_view() {
+        return std::experimental::string_view(data(), length());
+    }
 #endif
 
     StringFixed& operator=(StringFixed const& src) {

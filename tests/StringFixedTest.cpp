@@ -329,4 +329,12 @@ TEST_F(StringFixedTest, BackTest) {
     EXPECT_STREQ(&str.back(), "3");
 }
 
+///////// STRING VIEW OPERATOR
+TEST_F(StringFixedTest, StringViewOperatorTest) {
+    String str = "123";
+    std::experimental::string_view sv = str;
+
+    EXPECT_STREQ(sv.data(), str.data());
+}
+
 }
